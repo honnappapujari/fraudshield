@@ -18,5 +18,6 @@ print("Average amount, genuine:", df[df["is_fraud"] == 0]["amount"].mean())
 
 df.to_csv("data/tiny.csv", index=False)
 df2 = pd.read_csv("data/tiny.csv")
+print(f'read from csv')
 print(df2.shape)
 print(df2.equals(df))
