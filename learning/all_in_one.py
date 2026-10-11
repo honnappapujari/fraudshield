@@ -101,3 +101,15 @@ cutoff_loop("XGBoost cutoffs (validation)", proba_v, y_val)
 # final = XGBClassifier(n_estimators=200, max_depth=4, learning_rate=0.1,
 #                       random_state=42, eval_metric="logloss").fit(X_train, y_train)
 # report("FINAL on test", y_test, (final.predict_proba(X_test)[:, 1] >= CUTOFF).astype(int))
+
+from sklearn.ensemble import RandomForestClassifier
+
+rf = RandomForestClassifier(n_estimators=200, n_jobs=-1, random_state=42)
+rf.fit(X_train, y_train)
+
+proba_rf = rf.predict_proba(X_test)[:, 1]
+for t in [0.5, 0.3, 0.1, 0.05]:
+    p = (proba_rf >= t).astype(int)
+    print(t, "recall:", round(recall_score(y_test, p), 3),
+          "precision:", round(precision_score(y_test, p), 3))
+print("RandomForest AP:", round(average_precision_score(y_test, proba_rf), 3))

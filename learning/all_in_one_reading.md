@@ -16,6 +16,7 @@ All results below come from the same hidden test set (56,962 rows, 98 frauds).
 | 7 | Average precision: LogReg 0.741, XGBoost 0.832 | - | - | One score for the whole precision-recall curve. XGBoost is clearly better. |
 | 8 | XGBoost with scale_pos_weight (about 577) | 82 | about 49 | Same trade-off as lowering the cutoff. Nothing new. |
 | 9 | Validation set to pick the cutoff honestly | - | - | On validation the cutoff barely mattered for XGBoost. |
+| 10 | Random Forest (200 trees), cutoff 0.5 | 81 | 5 | Best so far: higher recall and higher precision than XGBoost. AP 0.873. |
 
 ## Key ideas in plain words
 
@@ -29,6 +30,18 @@ All results below come from the same hidden test set (56,962 rows, 98 frauds).
 6. **A better model matters most.** Switching to XGBoost was the only real jump.
 7. **Honest testing.** Keep a hidden test set. Pick the cutoff on a validation set, not on test.
 8. **Ceiling.** About 16 to 20 frauds look completely genuine to the model.
+9. **Random Forest vs XGBoost.** Random Forest builds many trees independently and lets them vote. XGBoost builds trees one after another, each fixing the last one's mistakes. Here Random Forest was better, but the test set has only 98 frauds, so a difference of a few frauds can be luck. Confirm with cross-validation.
+
+### Random Forest results on the test set (98 frauds)
+
+| Cutoff | Recall | Precision | Frauds caught | False alarms |
+|---|---|---|---|---|
+| 0.5 | 0.827 | 0.942 | 81 | 5 |
+| 0.3 | 0.878 | 0.860 | 86 | 14 |
+| 0.1 | 0.888 | 0.702 | 87 | 37 |
+| 0.05 | 0.898 | 0.571 | 88 | 66 |
+
+Average precision: Random Forest 0.873, XGBoost 0.832, LogReg 0.741.
 
 ## Full code (runs top to bottom in Colab)
 
@@ -119,7 +132,16 @@ proba_w = xgb_w.predict_proba(X_test)[:, 1]
 report("XGBoost, scale_pos_weight", y_test, (proba_w >= 0.5).astype(int))
 print("XGBoost weighted AP:", round(average_precision_score(y_test, proba_w), 3))
 
-# ---- Step 11: validation set, pick the cutoff without touching test ----
+# ---- Step 11: Random Forest (many independent trees that vote) ----
+from sklearn.ensemble import RandomForestClassifier
+
+rf = RandomForestClassifier(n_estimators=200, n_jobs=-1, random_state=42)
+rf.fit(X_train, y_train)
+proba_rf = rf.predict_proba(X_test)[:, 1]
+cutoff_loop("Random Forest cutoffs (test)", proba_rf, y_test)
+print("RandomForest AP:", round(average_precision_score(y_test, proba_rf), 3))
+
+# ---- Step 12: validation set, pick the cutoff without touching test ----
 X_tr, X_val, y_tr, y_val = train_test_split(
     X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
 print("train:", X_tr.shape, "frauds:", y_tr.sum())
@@ -132,7 +154,7 @@ xgb_v.fit(X_tr, y_tr)                        # learn from train only
 proba_v = xgb_v.predict_proba(X_val)[:, 1]   # score the validation rows
 cutoff_loop("XGBoost cutoffs (validation)", proba_v, y_val)
 
-# ---- Step 12 (later): retrain on all of X_train, use the chosen cutoff on test ONCE ----
+# ---- Step 13 (later): retrain on all of X_train, use the chosen cutoff on test ONCE ----
 # CUTOFF = 0.5   # chosen from the validation results above
 # final = XGBClassifier(n_estimators=200, max_depth=4, learning_rate=0.1,
 #                       random_state=42, eval_metric="logloss").fit(X_train, y_train)
@@ -143,6 +165,6 @@ cutoff_loop("XGBoost cutoffs (validation)", proba_v, y_val)
 
 - Hour-of-day feature from the `Time` column.
 - XGBoost tuning (depth, number of trees, learning rate).
-- Step 12 above: the final honest test score.
+- Step 13 above: the final honest test score.
 - SHAP: why the model flags a transaction.
-- Cross-validation for a steadier cutoff.
+- Cross-validation to check whether Random Forest really beats XGBoost, and for a steadier cutoff.
